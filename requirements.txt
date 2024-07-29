@@ -1,0 +1,8 @@
+dj-database-url==2.2.0
+Django==5.0.7
+django-phonenumber-field==8.0.0
+environs==5.2.1
+phonenumberslite==8.13.40
+python-dotenv==1.0.1
+python-telegram-bot==13.15
+
