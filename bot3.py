@@ -2,9 +2,10 @@ from telegram import ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMa
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, Filters, ConversationHandler
 from administrator_bot import confirm_booking
 import django
-import os
+import os, sys
 import re
 from dotenv import load_dotenv
+from django.core.management import execute_from_command_line
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'beauty.settings')
 django.setup()
@@ -638,6 +639,7 @@ def admin_command(update: Update, context: CallbackContext) -> None:
 
 
 def main():
+    execute_from_command_line([sys.argv[0], 'runserver', '0.0.0.0:8000'])
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
 
