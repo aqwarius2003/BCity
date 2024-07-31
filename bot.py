@@ -22,8 +22,8 @@ from property.models import Customer, Service, Staff, Salon, Schedule, Appointme
 users = {}
 load_dotenv()
 TOKEN = os.getenv('TG_BOT_TOKEN')
-if not TOKEN:
-    raise ValueError("TELEGRAM_BOT_TOKEN не найден в переменных окружения")
+# if not TOKEN:
+    # raise ValueError("TELEGRAM_BOT_TOKEN не найден в переменных окружения")
 # Идентификаторы администраторов
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')
 ADMIN_ID = os.getenv('ADMIN_ID')
@@ -164,6 +164,7 @@ def notification_to_administrator(update: Update, context: CallbackContext):
 
 # Функция для запуска меню администратора
 def start_admin_menu(update: Update, context: CallbackContext) -> None:
+    print('sjflq;fjq;')
     update.message.reply_text("Добро пожаловать в меню администратора.")
     show_admin_menu(update, context)
 
@@ -295,16 +296,13 @@ def show_main_menu(update: Update, context: CallbackContext):
 def show_terms(update: Update, context: CallbackContext, chat_id: object):
     send_agreement_document(chat_id, context.bot)
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Согласен", callback_data='agree')],
-        [InlineKeyboardButton("Отказаться", callback_data='decline')],
+        [InlineKeyboardButton("Соглашаюсь", callback_data='agree'),
+        InlineKeyboardButton("Отказываюсь", callback_data='decline')],
     ])
     update.effective_message.reply_text(
         'Пожалуйста, подтвердите своё согласие на обработку данных:',
         reply_markup=keyboard
     )
-
-
-
 
 
 # выводит список доступных салонов
@@ -492,7 +490,9 @@ def show_confirmation(update: Update, context: CallbackContext):
 def save_appointment_from_user_data(update, context):
     user_data = context.user_data
     chat_id = update.effective_chat.id
-    if 'salon_id' in user_data and 'service_id' in user_data and 'staff_id' in user_data and 'date' in user_data and 'time' in user_data:
+    # if 'salon_id' in user_data and 'service_id' in user_data and 'staff_id' in user_data and 'date' in user_data and 'time' in user_data:
+    required_keys = ['salon_id', 'service_id', 'staff_id', 'date', 'time']
+    if all(key in user_data for key in required_keys):
         try:
             customer = Customer.objects.get(telegram_id=chat_id)
             salon = Salon.objects.get(id=user_data['salon_id'])
@@ -643,6 +643,7 @@ def handle_contact(update: Update, context: CallbackContext):
 
     if created:
         context.bot.send_message(chat_id=chat_id, text="Вы успешно зарегистрированы!")
+        show_big_keyboard(update, context, chat_id)
     else:
         context.bot.send_message(chat_id=chat_id, text="Вы уже зарегистрированы!")
 
@@ -706,31 +707,31 @@ def button(update: Update, context: CallbackContext):
 
 
 # Обработчик для выбора в меню администратора
-def handle_admin_choice(update: Update, context: CallbackContext):
-    user_choice = update.message.text
-    current_menu = context.user_data.get('current_menu', 'main')
-    admin_menu = context.user_data.get('admin_menu', [])
-
-    if user_choice == "Назад" and current_menu == 'submenu':
-        show_admin_menu(update, context)
-        return
-
-    if current_menu == 'main':
-        for item in admin_menu:
-            if item['name'] == user_choice:
-                if 'submenu' in item:
-                    show_submenu(update, context, item['submenu'])
-                else:
-                    update.message.reply_text(f'Вы выбрали: {user_choice}')
-                return
-    elif current_menu == 'submenu':
-        submenu = context.user_data.get('submenu', [])
-        for submenu_item in submenu:
-            if submenu_item['name'] == user_choice:
-                update.message.reply_text(f'Вы выбрали: {submenu_item["name"]}')
-                return
-
-    update.message.reply_text('Неверный выбор. Пожалуйста, попробуйте еще раз.')
+# def handle_admin_choice(update: Update, context: CallbackContext):
+#     user_choice = update.message.text
+#     current_menu = context.user_data.get('current_menu', 'main')
+#     admin_menu = context.user_data.get('admin_menu', [])
+#
+#     if user_choice == "Назад" and current_menu == 'submenu':
+#         show_admin_menu(update, context)
+#         return
+#
+#     if current_menu == 'main':
+#         for item in admin_menu:
+#             if item['name'] == user_choice:
+#                 if 'submenu' in item:
+#                     show_submenu(update, context, item['submenu'])
+#                 else:
+#                     update.message.reply_text(f'Вы выбрали: {user_choice}')
+#                 return
+#     elif current_menu == 'submenu':
+#         submenu = context.user_data.get('submenu', [])
+#         for submenu_item in submenu:
+#             if submenu_item['name'] == user_choice:
+#                 update.message.reply_text(f'Вы выбрали: {submenu_item["name"]}')
+#                 return
+#
+#     update.message.reply_text('Неверный выбор. Пожалуйста, попробуйте еще раз.')
 
 # Создаем обработчик разговора
 conversation_handler = ConversationHandler(
@@ -744,7 +745,7 @@ conversation_handler = ConversationHandler(
 
 
 def main():
-    execute_from_command_line([sys.argv[0], 'runserver', '0.0.0.0:8000'])
+    # execute_from_command_line([sys.argv[0], 'runserver', '0.0.0.0:8000'])
     updater = Updater(TOKEN, use_context=True, request_kwargs={'read_timeout': 10, 'connect_timeout': 5})
     dp = updater.dispatcher
     dp.add_handler(CommandHandler("start", start))
