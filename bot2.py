@@ -238,9 +238,9 @@ def register_user(update: Update, context: CallbackContext):
         phone=phone_number,
         defaults={'first_name': first_name, 'last_name': last_name, 'telegram_id': chat_id},
     )
-    context.user_data['customer_id'] = customer.id  # Сохраняем customer_id в user_data
     if created:
         context.bot.send_message(chat_id=chat_id, text="Вы успешно зарегистрированы!")
+        # Сохраняем запись
         save_appointment_from_user_data(update, context)
     else:
         context.bot.send_message(chat_id=chat_id, text="Вы уже зарегистрированы!")
@@ -336,7 +336,7 @@ def show_terms(update: Update, context: CallbackContext, chat_id: object):
         InlineKeyboardButton("Отказываюсь", callback_data='decline')],
     ])
     update.effective_message.reply_text(
-        'Пожалуйста, подтвердите своё согласие на обработку данных:',
+        'Для обработки ваших записей на наши услуги, \ngожалуйста, подтвердите своё согласие на обработку данных:',
         reply_markup=keyboard
     )
 
@@ -518,21 +518,23 @@ def show_time_picker(update: Update, context: CallbackContext):
 def show_confirmation(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     user_data = context.user_data
+    try:
+        customer = Customer.objects.get(telegram_id=chat_id)
+    except Customer.DoesNotExist:
+        # Если клиента нет в базе данных, запрашиваем согласие на обработку данных и номер телефона
+        show_terms(update, context, chat_id)
+        return
+
     salon = Salon.objects.get(id=user_data['salon_id'])
     service = Service.objects.get(id=user_data['service_id'])
     staff = Staff.objects.get(id=user_data['staff_id'])
-    try:
-        customer = Customer.objects.get(telegram_id=chat_id)
-        user_name = f"{customer.first_name} {customer.last_name}"
-    except Customer.DoesNotExist:
-        user_name = update.effective_user.first_name or ""
-    confirmation_text = (f" {user_name}\n" \
-                        f"Подтвердите запись:\n" \
+
+    confirmation_text = f"Подтвердите запись:\n" \
                         f"Салон: {salon.name}\n" \
                         f"Услуга: {service.name}\n" \
                         f"Мастер: {staff.first_name} {staff.last_name}\n" \
                         f"Дата: {user_data['date']}\n" \
-                        f"Время: {user_data['time']}")
+                        f"Время: {user_data['time']}"
 
     keyboard = [
         [InlineKeyboardButton("Подтвердить", callback_data='confirm')],
@@ -549,34 +551,31 @@ def save_appointment_from_user_data(update, context):
 
     if all(key in user_data for key in required_keys):
         try:
-            customer_id = user_data.get('customer_id')
-            if customer_id:
-                customer = Customer.objects.get(id=customer_id)
-            else:
-                customer = Customer.objects.get(telegram_id=chat_id)
-            salon = Salon.objects.get(id=user_data['salon_id'])
-            service = Service.objects.get(id=user_data['service_id'])
-            staff = Staff.objects.get(id=user_data['staff_id'])
-            date = user_data['date']
-            time = user_data['time']
-
-            appointment = Appointment(
-                customer=customer,
-                salon=salon,
-                staff=staff,
-                date=date,
-                start_time=time,
-                service=service
-            )
-            appointment.save()
-            context.bot.send_message(chat_id=chat_id, text="Запись успешно создана!")
+            customer = Customer.objects.get(telegram_id=chat_id)
         except Customer.DoesNotExist:
-            context.bot.send_message(chat_id=chat_id, text="Ошибка при создании записи. Пожалуйста, попробуйте снова.")
-        except Exception as e:
-            context.bot.send_message(chat_id=chat_id, text="Произошла ошибка при обработке запроса. Пожалуйста, попробуйте позже.")
-            logger.error(f"Ошибка при создании записи: {e}")
+            # Если клиента нет в базе данных, запрашиваем согласие на обработку данных и номер телефона
+            show_terms(update, context, chat_id)
+            return
+
+        salon = Salon.objects.get(id=user_data['salon_id'])
+        service = Service.objects.get(id=user_data['service_id'])
+        staff = Staff.objects.get(id=user_data['staff_id'])
+        date = user_data['date']
+        time = user_data['time']
+
+        appointment = Appointment(
+            customer=customer,
+            salon=salon,
+            staff=staff,
+            date=date,
+            start_time=time,
+            service=service
+        )
+        appointment.save()
+        context.bot.send_message(chat_id=chat_id, text="Запись успешно создана!")
     else:
         context.bot.send_message(chat_id=chat_id, text="Не хватает данных для создания записи.")
+
 
 # Функция обработки отмены записи
 def handle_cancel_booking(update: Update, context: CallbackContext):
