@@ -188,22 +188,85 @@ def handle_admin_last_name_input(update: Update, context: CallbackContext):
     show_services_menu(update, context)
     return 'service'
 
-def handle_admin_last_name_input(update: Update, context: CallbackContext):
-    last_name = update.message.text
-    context.user_data['last_name'] = last_name
-    phone_number = context.user_data['phone_number']
-    first_name = context.user_data['first_name']
-    last_name = context.user_data['last_name']
-    customer, created = Customer.objects.get_or_create(
-        phone=phone_number,
-        defaults={'first_name': first_name, 'last_name': last_name},
+
+def show_admin_client_menu(update: Update, context: CallbackContext):
+    logger.info("Отображение меню администратора для клиента")
+    message = update.message or update.callback_query.message
+    if message:
+        keyboard = ReplyKeyboardMarkup(
+            [["Выбрать салон", "Выбрать услугу"], ["Выбрать мастера", "Выбрать дату"], ["Выбрать время", "Подтвердить"]],
+            resize_keyboard=True
+        )
+        message.reply_text('Выберите действие', reply_markup=keyboard)
+
+
+def handle_admin_client_choice(update: Update, context: CallbackContext):
+    text = update.message.text
+    if text == "Выбрать салон":
+        show_salons_menu(update, context)
+    elif text == "Выбрать услугу":
+        show_services_menu(update, context)
+    elif text == "Выбрать мастера":
+        show_staff_menu(update, context)
+    elif text == "Выбрать дату":
+        show_date_picker(update, context)
+    elif text == "Выбрать время":
+        show_time_picker(update, context)
+    elif text == "Подтвердить":
+        show_admin_client_confirmation(update, context)
+
+
+def show_admin_client_confirmation(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    user_data = context.user_data
+
+    # Получаем информацию о клиенте из контекста разговора
+    customer_phone = user_data.get('customer_phone')
+    customer = Customer.objects.get(phone=customer_phone)
+
+    # Получаем информацию о записи из контекста разговора
+    salon = Salon.objects.get(id=user_data['salon_id'])
+    service = Service.objects.get(id=user_data['service_id'])
+    staff = Staff.objects.get(id=user_data['staff_id'])
+    date = datetime.strptime(user_data['date'], '%d.%m.%Y').date()
+    time = datetime.strptime(user_data['time'], '%H:%M').time()
+
+    # Создаем запись в БД
+    appointment = Appointment.objects.create(
+        customer=customer,
+        salon=salon,
+        service=service,
+        staff=staff,
+        date=date,
+        time=time,
     )
-    if created:
-        context.bot.send_message(chat_id=update.message.chat_id, text="Клиент успешно зарегистрирован!")
-    else:
-        context.bot.send_message(chat_id=update.message.chat_id, text="Клиент уже зарегистрирован!")
-    show_admin_menu(update, context)
-    return ConversationHandler.END
+
+    # Отправляем сообщение об успешной записи
+    context.bot.send_message(chat_id=chat_id, text="Запись успешно создана!")
+
+    # Очищаем данные пользователя
+    user_data.clear()
+
+
+def admin_client_conversation_handler():
+    return ConversationHandler(
+        entry_points=[MessageHandler(Filters.text("Записать клиента"), handle_admin_client_start)],
+        states={
+            'phone_number': [MessageHandler(Filters.text, handle_admin_phone_input)],
+            'first_name': [MessageHandler(Filters.text, handle_admin_first_name_input)],
+            'last_name': [MessageHandler(Filters.text, handle_admin_last_name_input)],
+            'salon': [CallbackQueryHandler(button)],
+            'service': [CallbackQueryHandler(button)],
+            'staff': [CallbackQueryHandler(button)],
+            'date': [CallbackQueryHandler(button)],
+            'time': [CallbackQueryHandler(button)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel_booking)]
+    )
+
+def handle_admin_client_start(update: Update, context: CallbackContext):
+    context.bot.send_message(chat_id=update.message.chat_id, text="Введите номер телефона клиента:")
+    return 'phone_number'
 
 
 def check_user_in_db(user_id):
@@ -819,6 +882,7 @@ def main():
     updater = Updater(TOKEN, use_context=True, request_kwargs={'read_timeout': 30, 'connect_timeout': 15})
     dp = updater.dispatcher
     dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(admin_client_conversation_handler())
     dp.add_handler(MessageHandler(Filters.text("Записаться"), show_main_menu))
     dp.add_handler(MessageHandler(Filters.text("Мои записи"), show_my_appointments))
     dp.add_handler(MessageHandler(Filters.text("Салоны"), show_salons))
@@ -836,6 +900,7 @@ def main():
     dp.add_handler(admin_conversation_handler)
     # dp.add_handler(CommandHandler("remind_tomorrow", remind_tomorrow_command))
     dp.add_handler(conversation_handler)
+
 
     updater.start_polling()
     updater.idle()
