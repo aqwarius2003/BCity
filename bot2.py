@@ -238,6 +238,7 @@ def register_user(update: Update, context: CallbackContext):
         phone=phone_number,
         defaults={'first_name': first_name, 'last_name': last_name, 'telegram_id': chat_id},
     )
+    context.user_data['customer_id'] = customer.id  # Сохраняем customer_id в user_data
     if created:
         context.bot.send_message(chat_id=chat_id, text="Вы успешно зарегистрированы!")
         save_appointment_from_user_data(update, context)
@@ -548,7 +549,11 @@ def save_appointment_from_user_data(update, context):
 
     if all(key in user_data for key in required_keys):
         try:
-            customer = Customer.objects.get(id=user_data['customer_id'])
+            customer_id = user_data.get('customer_id')
+            if customer_id:
+                customer = Customer.objects.get(id=customer_id)
+            else:
+                customer = Customer.objects.get(telegram_id=chat_id)
             salon = Salon.objects.get(id=user_data['salon_id'])
             service = Service.objects.get(id=user_data['service_id'])
             staff = Staff.objects.get(id=user_data['staff_id'])
@@ -572,7 +577,6 @@ def save_appointment_from_user_data(update, context):
             logger.error(f"Ошибка при создании записи: {e}")
     else:
         context.bot.send_message(chat_id=chat_id, text="Не хватает данных для создания записи.")
-
 
 # Функция обработки отмены записи
 def handle_cancel_booking(update: Update, context: CallbackContext):
@@ -813,7 +817,7 @@ admin_conversation_handler = ConversationHandler(
 
 def main():
     # execute_from_command_line([sys.argv[0], 'runserver', '0.0.0.0:8000'])
-    updater = Updater(TOKEN, use_context=True, request_kwargs={'read_timeout': 10, 'connect_timeout': 5})
+    updater = Updater(TOKEN, use_context=True, request_kwargs={'read_timeout': 30, 'connect_timeout': 15})
     dp = updater.dispatcher
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(MessageHandler(Filters.text("Записаться"), show_main_menu))
