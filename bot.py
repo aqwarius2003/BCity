@@ -18,6 +18,8 @@ django.setup()
 
 from property.models import Customer, Service, Staff, Salon, Schedule, Appointment
 
+MAIN_MENU = 1
+GET_PHONE = 2
 
 users = {}
 load_dotenv()
@@ -78,7 +80,6 @@ admin_menu_keyboard = ["Записать клиента", "Рассылка со
 # Функция для отображения меню администратора
 def show_admin_menu(update: Update, context: CallbackContext):
     logger.info("Отображение меню администратора")
-
     message = update.message or update.callback_query.message
     if message:
         keyboard = ReplyKeyboardMarkup(
@@ -88,29 +89,13 @@ def show_admin_menu(update: Update, context: CallbackContext):
         message.reply_text('Выберите действие', reply_markup=keyboard)
 
 
-def show_submenu(update, context, submenu):
-    options = [item['name'] for item in submenu]
-
-    # Добавляем кнопку "Назад", если ее еще нет
-    if "Назад" not in options:
-        options.append("Назад")
-
-    # Разбиваем кнопки на два столбца
-    options_chunked = [options[i:i + 2] for i in range(0, len(options), 2)]
-
-    reply_markup = ReplyKeyboardMarkup(options_chunked, resize_keyboard=True)
-    update.message.reply_text('Выберите действие:', reply_markup=reply_markup)
-    context.user_data['current_menu'] = 'submenu'
-    context.user_data['submenu'] = submenu
-
-
 def check_administrator(update: Update, context: CallbackContext) -> None:
     command = update.message.text
     match = re.match(r'/admin:(\w+)', command)
     if match:
         password = match.group(1)
         if password == ADMIN_PASSWORD:
-            start_admin_menu(update, context)
+            start_admin(update, context)
         else:
             update.message.reply_text("Неправильный пароль.")
     else:
@@ -163,10 +148,125 @@ def notification_to_administrator(update: Update, context: CallbackContext):
 
 
 # Функция для запуска меню администратора
-def start_admin_menu(update: Update, context: CallbackContext) -> None:
-    print('sjflq;fjq;')
-    update.message.reply_text("Добро пожаловать в меню администратора.")
+def start_admin(update: Update, context: CallbackContext):
     show_admin_menu(update, context)
+
+
+def handle_admin_choice(update: Update, context: CallbackContext):
+    text = update.message.text
+    if text == "Записать клиента":
+        context.bot.send_message(chat_id=update.message.chat_id, text="Введите номер телефона клиента:")
+        return 'phone_number'
+
+
+def handle_admin_phone_input(update: Update, context: CallbackContext):
+    phone_number = update.message.text
+    try:
+        customer = Customer.objects.get(phone=phone_number)
+        context.bot.send_message(chat_id=update.message.chat_id, text=f"Клиент найден: {customer.first_name} {customer.last_name}")
+        # Вывод меню по записи
+        show_services_menu(update, context)
+        return 'service'
+    except Customer.DoesNotExist:
+        context.bot.send_message(chat_id=update.message.chat_id, text="Клиент не найден. Введите имя клиента:")
+        context.user_data['phone_number'] = phone_number
+        return 'first_name'
+
+def handle_admin_first_name_input(update: Update, context: CallbackContext):
+    first_name = update.message.text
+    context.user_data['first_name'] = first_name
+    context.bot.send_message(chat_id=update.message.chat_id, text="Введите фамилию клиента:")
+    return 'last_name'
+
+def handle_admin_last_name_input(update: Update, context: CallbackContext):
+    last_name = update.message.text
+    phone_number = context.user_data['phone_number']
+    first_name = context.user_data['first_name']
+    Customer.objects.create(phone=phone_number, first_name=first_name, last_name=last_name)
+    context.bot.send_message(chat_id=update.message.chat_id, text="Клиент создан. Выберите услугу:")
+    # Вывод меню по записи
+    show_services_menu(update, context)
+    return 'service'
+
+
+def show_admin_client_menu(update: Update, context: CallbackContext):
+    logger.info("Отображение меню администратора для клиента")
+    message = update.message or update.callback_query.message
+    if message:
+        keyboard = ReplyKeyboardMarkup(
+            [["Выбрать салон", "Выбрать услугу"], ["Выбрать мастера", "Выбрать дату"], ["Выбрать время", "Подтвердить"]],
+            resize_keyboard=True
+        )
+        message.reply_text('Выберите действие', reply_markup=keyboard)
+
+
+def handle_admin_client_choice(update: Update, context: CallbackContext):
+    text = update.message.text
+    if text == "Выбрать салон":
+        show_salons_menu(update, context)
+    elif text == "Выбрать услугу":
+        show_services_menu(update, context)
+    elif text == "Выбрать мастера":
+        show_staff_menu(update, context)
+    elif text == "Выбрать дату":
+        show_date_picker(update, context)
+    elif text == "Выбрать время":
+        show_time_picker(update, context)
+    elif text == "Подтвердить":
+        show_admin_client_confirmation(update, context)
+
+
+def show_admin_client_confirmation(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    user_data = context.user_data
+
+    # Получаем информацию о клиенте из контекста разговора
+    customer_phone = user_data.get('customer_phone')
+    customer = Customer.objects.get(phone=customer_phone)
+
+    # Получаем информацию о записи из контекста разговора
+    salon = Salon.objects.get(id=user_data['salon_id'])
+    service = Service.objects.get(id=user_data['service_id'])
+    staff = Staff.objects.get(id=user_data['staff_id'])
+    date = datetime.strptime(user_data['date'], '%d.%m.%Y').date()
+    time = datetime.strptime(user_data['time'], '%H:%M').time()
+
+    # Создаем запись в БД
+    appointment = Appointment.objects.create(
+        customer=customer,
+        salon=salon,
+        service=service,
+        staff=staff,
+        date=date,
+        time=time,
+    )
+
+    # Отправляем сообщение об успешной записи
+    context.bot.send_message(chat_id=chat_id, text="Запись успешно создана!")
+
+    # Очищаем данные пользователя
+    user_data.clear()
+
+
+def admin_client_conversation_handler():
+    return ConversationHandler(
+        entry_points=[MessageHandler(Filters.text("Записать клиента"), handle_admin_client_start)],
+        states={
+            'phone_number': [MessageHandler(Filters.text, handle_admin_phone_input)],
+            'first_name': [MessageHandler(Filters.text, handle_admin_first_name_input)],
+            'last_name': [MessageHandler(Filters.text, handle_admin_last_name_input)],
+            'salon': [CallbackQueryHandler(button)],
+            'service': [CallbackQueryHandler(button)],
+            'staff': [CallbackQueryHandler(button)],
+            'date': [CallbackQueryHandler(button)],
+            'time': [CallbackQueryHandler(button)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel_booking)]
+    )
+
+def handle_admin_client_start(update: Update, context: CallbackContext):
+    context.bot.send_message(chat_id=update.message.chat_id, text="Введите номер телефона клиента:")
+    return 'phone_number'
 
 
 def check_user_in_db(user_id):
@@ -183,7 +283,6 @@ def send_agreement_document(chat_id, bot):
 
 # Функция поделиться номером телефона
 def request_phone_number(update: Update, context: CallbackContext, chat_id):
-    # keyboard = ReplyKeyboardRemove()
     keyboard = ReplyKeyboardMarkup([[KeyboardButton("Поделиться номером телефона", request_contact=True)]],
                                    one_time_keyboard=True, resize_keyboard=True,)
     context.bot.send_message(chat_id=chat_id, text="Пожалуйста, поделитесь своим номером телефона для завершения "
@@ -204,6 +303,7 @@ def register_user(update: Update, context: CallbackContext):
     )
     if created:
         context.bot.send_message(chat_id=chat_id, text="Вы успешно зарегистрированы!")
+        # Сохраняем запись
         save_appointment_from_user_data(update, context)
     else:
         context.bot.send_message(chat_id=chat_id, text="Вы уже зарегистрированы!")
@@ -227,7 +327,6 @@ def cancel_booking(update: Update, context: CallbackContext):
 
 # Функция обработки команды /start - выводит big_keyboard
 def start(update: Update, context: CallbackContext):
-    print('jdl;kwg')
     chat_id = update.message.chat_id
     users[chat_id] = {}
     show_big_keyboard(update, context, chat_id)
@@ -300,9 +399,23 @@ def show_terms(update: Update, context: CallbackContext, chat_id: object):
         InlineKeyboardButton("Отказываюсь", callback_data='decline')],
     ])
     update.effective_message.reply_text(
-        'Пожалуйста, подтвердите своё согласие на обработку данных:',
+        'Для обработки ваших записей на наши услуги, \ngожалуйста, подтвердите своё согласие на обработку данных:',
         reply_markup=keyboard
     )
+
+
+def handle_agree(update: Update, context: CallbackContext):
+    query = update.callback_query
+    query.answer()
+    chat_id = query.message.chat_id
+    request_phone_number(update, context, chat_id)
+
+def handle_decline(update: Update, context: CallbackContext):
+    query = update.callback_query
+    query.answer()
+    chat_id = query.message.chat_id
+    query.message.reply_text('Вы отказались от записи.')
+
 
 
 # выводит список доступных салонов
@@ -468,6 +581,13 @@ def show_time_picker(update: Update, context: CallbackContext):
 def show_confirmation(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     user_data = context.user_data
+    try:
+        customer = Customer.objects.get(telegram_id=chat_id)
+    except Customer.DoesNotExist:
+        # Если клиента нет в базе данных, запрашиваем согласие на обработку данных и номер телефона
+        show_terms(update, context, chat_id)
+        return
+
     salon = Salon.objects.get(id=user_data['salon_id'])
     service = Service.objects.get(id=user_data['service_id'])
     staff = Staff.objects.get(id=user_data['staff_id'])
@@ -490,37 +610,32 @@ def show_confirmation(update: Update, context: CallbackContext):
 def save_appointment_from_user_data(update, context):
     user_data = context.user_data
     chat_id = update.effective_chat.id
-    # if 'salon_id' in user_data and 'service_id' in user_data and 'staff_id' in user_data and 'date' in user_data and 'time' in user_data:
     required_keys = ['salon_id', 'service_id', 'staff_id', 'date', 'time']
+
     if all(key in user_data for key in required_keys):
         try:
             customer = Customer.objects.get(telegram_id=chat_id)
-            salon = Salon.objects.get(id=user_data['salon_id'])
-            service = Service.objects.get(id=user_data['service_id'])
-            staff = Staff.objects.get(id=user_data['staff_id'])
-            date = user_data['date']
-            time = user_data['time']
-
-            appointment = Appointment(
-                customer=customer,
-                salon=salon,
-                staff=staff,
-                date=date,
-                start_time=time,
-                service=service
-            )
-            appointment.save()
-            context.bot.send_message(chat_id=chat_id, text="Запись успешно создана!")
-
-            # notify_admin(Update,CallbackContext)
-
         except Customer.DoesNotExist:
-            context.bot.send_message(chat_id=chat_id,
-                                     text="Ошибка при создании записи. Пожалуйста, попробуйте снова.")
-        except Exception as e:
-            context.bot.send_message(chat_id=chat_id,
-                                     text=f"Произошла ошибка при обработке запроса. Пожалуйста, попробуйте позже.")
-            print(e)
+            # Если клиента нет в базе данных, запрашиваем согласие на обработку данных и номер телефона
+            show_terms(update, context, chat_id)
+            return
+
+        salon = Salon.objects.get(id=user_data['salon_id'])
+        service = Service.objects.get(id=user_data['service_id'])
+        staff = Staff.objects.get(id=user_data['staff_id'])
+        date = user_data['date']
+        time = user_data['time']
+
+        appointment = Appointment(
+            customer=customer,
+            salon=salon,
+            staff=staff,
+            date=date,
+            start_time=time,
+            service=service
+        )
+        appointment.save()
+        context.bot.send_message(chat_id=chat_id, text="Запись успешно создана!")
     else:
         context.bot.send_message(chat_id=chat_id, text="Не хватает данных для создания записи.")
 
@@ -580,7 +695,7 @@ def show_my_appointments(update: Update, context: CallbackContext):
 
 
 def show_administration_contacts(update: Update, context: CallbackContext):
-    update.message.reply_text('Мы готовы вас записать в салоны. Позвоните по телефону: +71234567889')
+    update.message.reply_text('Мы готовы вас записать в салоны.\n Позвоните по телефону: +71234567889')
     show_big_keyboard(update, context, update.message.chat_id)
 
 
@@ -591,7 +706,7 @@ def show_salons(update: Update, context: CallbackContext):
     if salons.exists():
         message_text = "Доступные салоны:\n"
         for salon in salons:
-            message_text += f"{salon.name} - {salon.address}\n"
+            message_text += f"{salon.name}\n{salon.address}\n\n"
     else:
         message_text = "Салоны не найдены."
 
@@ -622,7 +737,7 @@ def show_services(update: Update, context: CallbackContext):
     if services.exists():
         message_text = "Доступные услуги:\n"
         for service in services:
-            message_text += f"{service.name} - {service.description} - {service.price} руб.\n"
+            message_text += f"{service.name}\n {service.description}\n {service.price} руб.\n\n"
     else:
         message_text = "Услуги не найдены."
 
@@ -655,6 +770,11 @@ def button(update: Update, context: CallbackContext):
     callback_data = query.data
     chat_id = query.message.chat_id
     user_data = context.user_data
+
+    if callback_data == 'agree':
+        handle_agree(update, context)
+    elif callback_data == 'decline':
+        handle_decline(update, context)
 
     if callback_data.startswith('salon_'):
         salon_id = int(callback_data.split('_')[1])
@@ -735,10 +855,23 @@ def button(update: Update, context: CallbackContext):
 
 # Создаем обработчик разговора
 conversation_handler = ConversationHandler(
-    entry_points=[CommandHandler('start', show_main_menu)],
+    entry_points=[CommandHandler('start', show_main_menu), MessageHandler(Filters.text("Записать клиента"), handle_admin_choice)],
     states={
         MAIN_MENU: [CallbackQueryHandler(show_main_menu,
-                                         pattern='^(select_salon|select_service|select_staff|select_date|select_time)$')]
+                                         pattern='^(select_salon|select_service|select_staff|select_date|select_time)$')],
+        GET_PHONE: [MessageHandler(Filters.text, handle_admin_phone_input)],  # Исправлено
+    },
+    fallbacks=[CommandHandler('cancel', cancel_booking)]
+)
+
+
+admin_conversation_handler = ConversationHandler(
+    entry_points=[MessageHandler(Filters.text("Записать клиента"), handle_admin_choice)],
+    states={
+        'phone_number': [MessageHandler(Filters.text, handle_admin_phone_input)],
+        'first_name': [MessageHandler(Filters.text, handle_admin_first_name_input)],
+        'last_name': [MessageHandler(Filters.text, handle_admin_last_name_input)],
+        'service': [CallbackQueryHandler(button)],
     },
     fallbacks=[CommandHandler('cancel', cancel_booking)]
 )
@@ -746,23 +879,28 @@ conversation_handler = ConversationHandler(
 
 def main():
     # execute_from_command_line([sys.argv[0], 'runserver', '0.0.0.0:8000'])
-    updater = Updater(TOKEN, use_context=True, request_kwargs={'read_timeout': 10, 'connect_timeout': 5})
+    updater = Updater(TOKEN, use_context=True, request_kwargs={'read_timeout': 30, 'connect_timeout': 15})
     dp = updater.dispatcher
     dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(admin_client_conversation_handler())
     dp.add_handler(MessageHandler(Filters.text("Записаться"), show_main_menu))
     dp.add_handler(MessageHandler(Filters.text("Мои записи"), show_my_appointments))
     dp.add_handler(MessageHandler(Filters.text("Салоны"), show_salons))
     dp.add_handler(MessageHandler(Filters.text("Мастера"), show_staffs))
     dp.add_handler(MessageHandler(Filters.text("Услуги"), show_services))
     dp.add_handler(MessageHandler(Filters.text("Администратор"), show_administration_contacts))
-    dp.add_handler(CallbackQueryHandler(cancel_booking, pattern='^cancel_booking$'))
+    # dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_admin_choice))
     dp.add_handler(CallbackQueryHandler(button))
-
-    dp.add_handler(CallbackQueryHandler(cancel_booking, pattern='^cancel_booking$'))
+    # dp.add_handler(MessageHandler(Filters.contact, handle_phone_input))
+    dp.add_handler(MessageHandler(Filters.contact, handle_contact))
+    dp.add_handler(CallbackQueryHandler(cancel_booking, pattern='^cancel_booking'))
+    dp.add_handler(CallbackQueryHandler(button))
     dp.add_handler(MessageHandler(Filters.contact, handle_contact))
     dp.add_handler(MessageHandler(Filters.regex(r'^/admin:\w+'), check_administrator))
+    dp.add_handler(admin_conversation_handler)
     # dp.add_handler(CommandHandler("remind_tomorrow", remind_tomorrow_command))
     dp.add_handler(conversation_handler)
+
 
     updater.start_polling()
     updater.idle()
