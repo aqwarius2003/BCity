@@ -24,9 +24,6 @@ GET_PHONE = 2
 users = {}
 load_dotenv()
 TOKEN = os.getenv('TG_BOT_TOKEN')
-# if not TOKEN:
-    # raise ValueError("TELEGRAM_BOT_TOKEN не найден в переменных окружения")
-# Идентификаторы администраторов
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')
 ADMIN_ID = os.getenv('ADMIN_ID')
 
@@ -38,42 +35,6 @@ logger = logging.getLogger(__name__)
 big_keyboard = ["Записаться", "Мои записи", "Салоны", "Мастера", "Услуги", "Администратор"]
 
 admin_menu_keyboard = ["Записать клиента", "Рассылка сообщений","Записи клиентов"]
-
-
-# формирует инлайн кнопки в 2 столбика для кнопок выбора при записи на услуги
-# убрать лишние условия, поскольку столбцы формируются в большинстве функций
-# def build_keyboard_two_columns(items: list) -> InlineKeyboardMarkup:
-#     """
-#     Создает разметку клавиатуры с двумя столбцами.
-#
-#     :param items: Список элементов, которые нужно вывести в меню.
-#     :return: Разметка клавиатуры с двумя столбцами.
-#     """
-#     keyboard = []
-#     for i, item in enumerate(items):
-#         if isinstance(item, str):
-#             if i % 2 == 0:
-#                 keyboard.append([InlineKeyboardButton(item, callback_data=item)])
-#             else:
-#                 keyboard[-1].append(InlineKeyboardButton(item, callback_data=item))
-#         elif isinstance(item, datetime.date):
-#             if i % 2 == 0:
-#                 keyboard.append([InlineKeyboardButton(item.strftime('%d.%m.%Y'), callback_data=item.strftime('%d.%m.%Y'))])
-#             else:
-#                 keyboard[-1].append(InlineKeyboardButton(item.strftime('%d.%m.%Y'), callback_data=item.strftime('%d.%m.%Y')))
-#         else:
-#             if i % 2 == 0:
-#                 keyboard.append([InlineKeyboardButton(f'{item.first_name} {item.last_name}', callback_data=item.id)])
-#             else:
-#                 keyboard[-1].append(InlineKeyboardButton(f'{item.first_name} {item.last_name}', callback_data=item.id))
-#
-#     if len(items) % 2 != 0:
-#         keyboard[-1].append(InlineKeyboardButton())
-#
-#     return InlineKeyboardMarkup(keyboard)
-
-# Функция проверки ID телеграма в базе
-
 
 # Функция для проверки пароля и вызова меню администратора
 
@@ -825,33 +786,6 @@ def button(update: Update, context: CallbackContext):
     elif callback_data == 'cancel_booking':
         handle_cancel_booking(update, context)
 
-
-# Обработчик для выбора в меню администратора
-# def handle_admin_choice(update: Update, context: CallbackContext):
-#     user_choice = update.message.text
-#     current_menu = context.user_data.get('current_menu', 'main')
-#     admin_menu = context.user_data.get('admin_menu', [])
-#
-#     if user_choice == "Назад" and current_menu == 'submenu':
-#         show_admin_menu(update, context)
-#         return
-#
-#     if current_menu == 'main':
-#         for item in admin_menu:
-#             if item['name'] == user_choice:
-#                 if 'submenu' in item:
-#                     show_submenu(update, context, item['submenu'])
-#                 else:
-#                     update.message.reply_text(f'Вы выбрали: {user_choice}')
-#                 return
-#     elif current_menu == 'submenu':
-#         submenu = context.user_data.get('submenu', [])
-#         for submenu_item in submenu:
-#             if submenu_item['name'] == user_choice:
-#                 update.message.reply_text(f'Вы выбрали: {submenu_item["name"]}')
-#                 return
-#
-#     update.message.reply_text('Неверный выбор. Пожалуйста, попробуйте еще раз.')
 
 # Создаем обработчик разговора
 conversation_handler = ConversationHandler(
